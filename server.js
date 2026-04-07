@@ -3,7 +3,7 @@ const cron = require('node-cron');
 const path = require('path');
 const db = require('./database');
 const { scrapeListings } = require('./scraper');
-const { discoverMakelaars } = require('./discover');
+const { discoverMakelaars, autoDetectMakelaar } = require('./discover');
 const { initWhatsApp, sendListing, getStatus, getQrDataUrl } = require('./whatsapp');
 
 const app = express();
@@ -51,9 +51,25 @@ app.get('/api/makelaars', (req, res) => {
 });
 
 app.post('/api/makelaars/discover', async (req, res) => {
-  res.json({ ok: true, message: 'Ontdekking gestart...' });
   const prefs = db.getPreferences();
-  discoverMakelaars(prefs.region || 'Maastricht', prefs.radius || 35);
+  const region = prefs.region || 'Maastricht';
+  try {
+    const results = await discoverMakelaars(region);
+    res.json({ ok: true, added: results.length, makelaars: results });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/makelaars/detect', async (req, res) => {
+  const { website } = req.body;
+  if (!website) return res.status(400).json({ error: 'website is verplicht' });
+  try {
+    const result = await autoDetectMakelaar(website);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 app.post('/api/makelaars', (req, res) => {

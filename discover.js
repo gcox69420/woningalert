@@ -1,166 +1,175 @@
-// Ontdek makelaars in een regio via NVM.nl en VBO.nl
-// NVM = Nederlandse Vereniging van Makelaars (grootste, ~4000 leden)
-// VBO = Vereniging Bemiddeling Onroerend goed (tweede vereniging)
+// Ontdek makelaars in een regio
+// Strategie: gecureerde lijst van Nederlandse makelaars per stad/provincie
+// + automatische detectie van de aanbodspagina
 
 const axios = require('axios');
 const cheerio = require('cheerio');
 const db = require('./database');
 
-const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'nl-NL,nl;q=0.9',
+const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+// ── Gecureerde lijst van makelaars per stad ───────────────────────────────────
+// Gebaseerd op NVM-leden. Voeg gerust meer steden toe via een PR!
+
+const MAKELAARS_PER_STAD = {
+  maastricht: [
+    { name: 'Smeets Makelaardij',   website: 'https://www.smeetsmakelaardij.nl', listings_url: 'https://www.smeetsmakelaardij.nl/woningaanbod',          parser: 'smeets' },
+    { name: 'AMH Makelaars',         website: 'https://amh-makelaars.nl',          listings_url: 'https://amh-makelaars.nl/woningaanbod/',                 parser: 'amh' },
+    { name: 'Damen Makelaardij',     website: 'https://www.damen-og.nl',            listings_url: 'https://www.damen-og.nl/wonen/zoeken/heel-nederland/koop/maastricht/', parser: 'js' },
+    { name: 'Tijs en Cyril',         website: 'https://www.tijsencyril.nl',         listings_url: 'https://www.tijsencyril.nl/woningen',                   parser: 'js' },
+    { name: 'Pooters Makelaardij',   website: 'https://www.pooters-makelaardij.nl', listings_url: 'https://www.pooters-makelaardij.nl/nl/te-koop',         parser: 'js' },
+    { name: 'TIM Vastgoed',          website: 'https://www.timvastgoed.nl',         listings_url: 'https://www.timvastgoed.nl/aanbod/woningaanbod/',        parser: 'js' },
+  ],
+  heerlen: [
+    { name: 'Vierhuizen Makelaardij',  website: 'https://www.vierhuizen.nl',         listings_url: 'https://www.vierhuizen.nl/aanbod/koopwoningen/',        parser: 'realworks' },
+    { name: 'Waltmann Makelaars',      website: 'https://www.waltmann.nl',           listings_url: 'https://www.waltmann.nl/wonen',                         parser: 'generic' },
+  ],
+  sittard: [
+    { name: 'Hermans & Schutgens',     website: 'https://www.hermans-schutgens.nl',  listings_url: 'https://www.hermans-schutgens.nl/aanbod/koopwoningen/', parser: 'realworks' },
+  ],
+  roermond: [
+    { name: 'Janssen Makelaardij',     website: 'https://www.janssenmakelaardij.nl', listings_url: 'https://www.janssenmakelaardij.nl/aanbod/koopwoningen/', parser: 'realworks' },
+  ],
+  amsterdam: [
+    { name: 'Engel & Völkers Amsterdam', website: 'https://www.engelvoelkers.com',   listings_url: 'https://www.engelvoelkers.com/nl-nl/amsterdam/',         parser: 'generic' },
+    { name: 'Broersma Makelaardij',    website: 'https://www.broersma.nl',           listings_url: 'https://www.broersma.nl/aanbod/koopwoningen/',           parser: 'realworks' },
+    { name: 'Hoekstra en van Eck',     website: 'https://www.hev.nl',               listings_url: 'https://www.hev.nl/aanbod/koopwoningen/',               parser: 'realworks' },
+  ],
+  rotterdam: [
+    { name: 'Rotsvast Rotterdam',      website: 'https://www.rotsvast.nl',           listings_url: 'https://www.rotsvast.nl/aanbod/koop/',                  parser: 'realworks' },
+    { name: 'Meeùs Rotterdam',         website: 'https://www.meeus.com',             listings_url: 'https://www.meeus.com/aanbod/koop/',                    parser: 'realworks' },
+  ],
+  utrecht: [
+    { name: 'De Groot Makelaardij',    website: 'https://www.degroothuis.nl',        listings_url: 'https://www.degroothuis.nl/aanbod/koopwoningen/',       parser: 'realworks' },
+    { name: 'ERA Makelaars Utrecht',   website: 'https://www.eramakelaarsutrecht.nl', listings_url: 'https://www.eramakelaarsutrecht.nl/aanbod/koopwoningen/', parser: 'realworks' },
+  ],
+  eindhoven: [
+    { name: 'Bos Makelaars',           website: 'https://www.bosmakelaars.nl',       listings_url: 'https://www.bosmakelaars.nl/aanbod/koopwoningen/',      parser: 'realworks' },
+    { name: 'ERA Makelaars Eindhoven', website: 'https://www.era-eindhoven.nl',       listings_url: 'https://www.era-eindhoven.nl/aanbod/koopwoningen/',     parser: 'realworks' },
+  ],
+  den_haag: [
+    { name: 'Valentijn Makelaardij',   website: 'https://www.valentijnmakelaardij.nl', listings_url: 'https://www.valentijnmakelaardij.nl/aanbod/koopwoningen/', parser: 'realworks' },
+  ],
+  groningen: [
+    { name: 'Thuis in Groningen',      website: 'https://www.thuisingroningen.nl',   listings_url: 'https://www.thuisingroningen.nl/aanbod/koopwoningen/',  parser: 'realworks' },
+  ],
+  breda: [
+    { name: 'Jansen Makelaardij',      website: 'https://www.jansenmakelaardij.nl',  listings_url: 'https://www.jansenmakelaardij.nl/aanbod/koopwoningen/', parser: 'realworks' },
+  ],
+  nijmegen: [
+    { name: 'Van Wijk Makelaardij',    website: 'https://www.vanwijkmakelaardij.nl', listings_url: 'https://www.vanwijkmakelaardij.nl/aanbod/koopwoningen/', parser: 'realworks' },
+  ],
 };
 
-async function fetchPage(url) {
-  try {
-    const res = await axios.get(url, { headers: HEADERS, timeout: 15000 });
-    return res.data;
-  } catch (e) {
-    console.error(`[Discover] Fout bij ophalen ${url}: ${e.message}`);
-    return null;
-  }
-}
+// ── Veelgebruikte aanbod-paden per platform ───────────────────────────────────
 
-// ── NVM.nl ───────────────────────────────────────────────────────────────────
+const LISTING_PATHS = [
+  '/aanbod/koopwoningen/',
+  '/aanbod/koop/',
+  '/aanbod/',
+  '/woningaanbod/',
+  '/te-koop/',
+  '/koop/',
+  '/koopwoningen/',
+  '/wonen/',
+];
 
-async function discoverNVM(region, radius) {
-  const makelaars = [];
-  const city = encodeURIComponent(region || 'Maastricht');
+// ── Detecteer aanbodspagina automatisch ──────────────────────────────────────
 
-  // NVM heeft een zoekpagina per stad
-  const urls = [
-    `https://www.nvm.nl/makelaar/?straal=${radius}&plaats=${city}`,
-    `https://www.nvm.nl/makelaar/limburg/maastricht/`,
-  ];
-
-  for (const url of urls) {
-    console.log(`[Discover/NVM] ${url}`);
-    const html = await fetchPage(url);
-    if (!html) continue;
-
-    const $ = cheerio.load(html);
-
-    // NVM makelaar kaarten
-    $('[class*="makelaar-item"], [class*="agent-item"], [class*="office-item"], .search-result').each((_, el) => {
-      const $el = $(el);
-      const name = $el.find('[class*="name"], h2, h3').first().text().trim();
-      const website = $el.find('a[href*="http"]:not([href*="nvm.nl"])').attr('href') ||
-                      $el.find('[class*="website"]').text().trim();
-      const city = $el.find('[class*="city"], [class*="plaats"]').first().text().trim();
-
-      if (name && website && website.startsWith('http')) {
-        makelaars.push({ name, website: normalizeUrl(website), city });
+async function detectListingsUrl(website) {
+  // Probeer bekende paden
+  for (const path of LISTING_PATHS) {
+    const url = `${website}${path}`;
+    try {
+      const res = await axios.get(url, { headers: { 'User-Agent': UA }, timeout: 8000 });
+      const html = res.data;
+      // Controleer of er woningen op staan
+      const hasListings =
+        html.includes('koopprijs') || html.includes('k.k.') || html.includes('v.o.n.') ||
+        html.includes('object-list-item') || html.includes('woonopp') || html.includes('slaapkamer');
+      const hasLinks = (html.match(/href="[^"]*\/(koop|object|woning|detail)\//g) || []).length > 2;
+      if (hasListings || hasLinks) {
+        const isRealworks = html.includes('realworks') || html.includes('object-list-item');
+        return { listings_url: url, parser: isRealworks ? 'realworks' : 'generic' };
       }
-    });
-
-    if (makelaars.length > 0) break;
-    await new Promise(r => setTimeout(r, 1000));
+    } catch (_) {}
+    await new Promise(r => setTimeout(r, 200));
   }
-
-  console.log(`[Discover/NVM] ${makelaars.length} makelaars gevonden`);
-  return makelaars;
+  return null;
 }
 
-// ── VBO.nl ───────────────────────────────────────────────────────────────────
+// ── Zoek stad in gecureerde lijst ─────────────────────────────────────────────
 
-async function discoverVBO(region) {
-  const makelaars = [];
-  const city = encodeURIComponent(region || 'Maastricht');
-  const url = `https://www.vbo.nl/zoek-een-makelaar/?stad=${city}`;
+function getCuratedMakelaars(region) {
+  const slug = region.toLowerCase().trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '')
+    .replace(/'s-/g, '');
 
-  console.log(`[Discover/VBO] ${url}`);
-  const html = await fetchPage(url);
-  if (!html) return makelaars;
+  // Exacte match
+  if (MAKELAARS_PER_STAD[slug]) return MAKELAARS_PER_STAD[slug];
 
-  const $ = cheerio.load(html);
-
-  $('[class*="makelaar"], [class*="member"], [class*="office"], .card').each((_, el) => {
-    const $el = $(el);
-    const name = $el.find('h2, h3, [class*="name"]').first().text().trim();
-    const website = $el.find('a[href*="http"]:not([href*="vbo.nl"])').attr('href') || '';
-    const city = $el.find('[class*="city"], [class*="plaats"]').first().text().trim();
-
-    if (name && website && website.startsWith('http')) {
-      makelaars.push({ name, website: normalizeUrl(website), city });
-    }
-  });
-
-  console.log(`[Discover/VBO] ${makelaars.length} makelaars gevonden`);
-  return makelaars;
-}
-
-// ── Bekende Maastricht-makelaars als fallback ─────────────────────────────────
-// Hardcoded lijst van bekende makelaars in de regio als de scrapers niets vinden
-
-function knownMakelaars() {
-  return [
-    { name: 'Smeets Makelaardij',         website: 'https://www.smeetsmakelaardij.nl', city: 'Maastricht' },
-    { name: 'ERA Huis & Thuis',            website: 'https://www.erahuisenthuis.nl',    city: 'Maastricht' },
-    { name: 'Hendriks Makelaardij',        website: 'https://www.hendriksmakelaardij.nl', city: 'Maastricht' },
-    { name: 'Van Hoof Makelaars',          website: 'https://www.vanhoofmakelaars.nl',  city: 'Maastricht' },
-    { name: 'Wonen Limburg',               website: 'https://www.wonenlimburg.nl',      city: 'Roermond' },
-    { name: 'Quint Makelaardij',           website: 'https://www.quintmakelaardij.nl',  city: 'Maastricht' },
-    { name: 'Delooz Makelaars',            website: 'https://www.delooz.nl',            city: 'Maastricht' },
-    { name: 'Vestide',                     website: 'https://www.vestide.nl',           city: 'Eindhoven' },
-    { name: 'Janssen & Hermans Makelaars', website: 'https://www.janssenhermans.nl',    city: 'Maastricht' },
-    { name: 'Beerens Makelaars',           website: 'https://www.beerensmakelaars.nl',  city: 'Maastricht' },
-  ];
-}
-
-// ── Normaliseer URL ───────────────────────────────────────────────────────────
-
-function normalizeUrl(url) {
-  try {
-    const u = new URL(url);
-    return `${u.protocol}//${u.hostname}`;
-  } catch {
-    return url;
-  }
-}
-
-// ── Dedupliceer op website ────────────────────────────────────────────────────
-
-function deduplicateByWebsite(list) {
-  const seen = new Set();
-  return list.filter(m => {
-    if (seen.has(m.website)) return false;
-    seen.add(m.website);
-    return true;
-  });
+  // Gedeeltelijke match (bijv. "Den Haag" → "den_haag")
+  const key = Object.keys(MAKELAARS_PER_STAD).find(k => slug.includes(k) || k.includes(slug));
+  return key ? MAKELAARS_PER_STAD[key] : [];
 }
 
 // ── Hoofdfunctie ─────────────────────────────────────────────────────────────
 
-async function discoverMakelaars(region = 'Maastricht', radius = 35) {
-  console.log(`\n[Discover] Makelaars zoeken rondom ${region} (${radius} km)...`);
+async function discoverMakelaars(region = 'Maastricht') {
+  console.log(`\n[Discover] Makelaars zoeken voor: ${region}`);
 
-  const [nvm, vbo] = await Promise.all([
-    discoverNVM(region, radius),
-    discoverVBO(region),
-  ]);
+  const curated = getCuratedMakelaars(region);
+  console.log(`[Discover] ${curated.length} makelaars gevonden in gecureerde lijst`);
 
-  let all = [...nvm, ...vbo];
+  let added = 0;
+  const results = [];
 
-  // Voeg bekende makelaars toe als fallback
-  const known = knownMakelaars();
-  all = [...all, ...known];
-
-  const unique = deduplicateByWebsite(all);
-  console.log(`[Discover] ${unique.length} unieke makelaars gevonden`);
-
-  // Sla op in database
-  let newCount = 0;
-  for (const m of unique) {
+  for (const m of curated) {
+    // Controleer of de makelaar al in de DB staat
     const existing = db.getMakelaars().find(e => e.website === m.website);
-    if (!existing) {
-      db.upsertMakelaar(m);
-      newCount++;
+
+    let listingsUrl = m.listings_url;
+    let parser = m.parser;
+
+    // Als er geen bekende listings_url is, probeer automatisch te detecteren
+    if (!listingsUrl) {
+      console.log(`[Discover] Detecteer aanbodspagina voor ${m.name}...`);
+      const detected = await detectListingsUrl(m.website);
+      if (detected) {
+        listingsUrl = detected.listings_url;
+        parser = detected.parser;
+      }
     }
+
+    if (!listingsUrl) {
+      console.log(`[Discover] Geen aanbodspagina gevonden voor ${m.name}`);
+      continue;
+    }
+
+    if (!existing) {
+      db.upsertMakelaar({ ...m, listings_url: listingsUrl, parser });
+      added++;
+    }
+
+    results.push({ ...m, listings_url: listingsUrl, parser });
   }
 
-  console.log(`[Discover] ${newCount} nieuwe makelaars opgeslagen`);
-  return unique;
+  console.log(`[Discover] Klaar. ${added} nieuwe makelaars toegevoegd.`);
+  return results;
 }
 
-module.exports = { discoverMakelaars };
+// ── Detecteer onbekende makelaar op basis van website ────────────────────────
+// Gebruikt wanneer een gebruiker zelf een website invult zonder listings_url
+
+async function autoDetectMakelaar(website) {
+  const name = new URL(website).hostname.replace('www.', '').split('.')[0];
+  console.log(`[Discover] Auto-detect: ${website}`);
+  const detected = await detectListingsUrl(website);
+  if (detected) {
+    return { name, website, ...detected };
+  }
+  return { name, website, listings_url: website, parser: 'js' };
+}
+
+module.exports = { discoverMakelaars, autoDetectMakelaar };

@@ -4,3 +4,4 @@ node_modules/
 housing.db
 *.log
 .DS_Store
+.claude/

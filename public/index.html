@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Housing Notifier</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .dot-green { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+    .dot-yellow { background: #eab308; box-shadow: 0 0 6px #eab308; animation: pulse 1.5s infinite; }
+    .dot-red { background: #ef4444; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <div class="max-w-4xl mx-auto px-4 py-8">
+
+    <!-- Header -->
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-900">Housing Notifier</h1>
+      <p class="text-gray-500 mt-1">Nieuwe woninglistings van alle makelaars direct naar WhatsApp</p>
+    </div>
+
+    <!-- Status cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+        <p class="text-xs text-gray-400 uppercase tracking-wide mb-1">WhatsApp</p>
+        <div class="flex items-center">
+          <span class="status-dot dot-red" id="wa-dot"></span>
+          <span class="font-semibold text-gray-700" id="wa-status">Laden...</span>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+        <p class="text-xs text-gray-400 uppercase tracking-wide mb-1">Totaal gevonden</p>
+        <p class="text-2xl font-bold text-gray-800" id="stat-total">–</p>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+        <p class="text-xs text-gray-400 uppercase tracking-wide mb-1">Verstuurd</p>
+        <p class="text-2xl font-bold text-gray-800" id="stat-notified">–</p>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+        <p class="text-xs text-gray-400 uppercase tracking-wide mb-1">Vandaag</p>
+        <p class="text-2xl font-bold text-gray-800" id="stat-today">–</p>
+      </div>
+    </div>
+
+    <!-- QR code sectie -->
+    <div id="qr-section" class="hidden bg-white rounded-xl shadow-sm border border-yellow-200 p-6 mb-8">
+      <h2 class="text-lg font-semibold text-gray-800 mb-2">WhatsApp koppelen</h2>
+      <p class="text-gray-500 text-sm mb-4">Open WhatsApp op je telefoon → Instellingen → Gekoppelde apparaten → Apparaat koppelen → scan de QR-code.</p>
+      <div class="flex justify-center">
+        <img id="qr-image" src="" alt="QR Code" class="w-56 h-56 border rounded-lg" />
+      </div>
+    </div>
+
+    <!-- Laatste scan -->
+    <div id="last-scan-row" class="hidden text-sm text-gray-400 mb-6">
+      Laatste scan: <span id="last-scan">–</span>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+
+      <!-- Voorkeuren form -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">Voorkeuren</h2>
+        <form id="prefs-form" class="space-y-4">
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">WhatsApp nummer</label>
+            <input name="phone" type="text" placeholder="+31612345678"
+              class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+            <p class="text-xs text-gray-400 mt-1">Inclusief landcode, bijv. +31612345678</p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Regio (centrum)</label>
+              <input name="region" type="text" placeholder="Maastricht"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Radius (km)</label>
+              <input name="radius" type="number" placeholder="35" min="1" max="100"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Budget min (€)</label>
+              <input name="budget_min" type="number" placeholder="0" min="0" step="10000"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Budget max (€)</label>
+              <input name="budget_max" type="number" placeholder="500000" min="0" step="10000"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Min. kamers</label>
+              <input name="min_rooms" type="number" placeholder="1" min="1" max="10"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Min. oppervlak (m²)</label>
+              <input name="min_surface" type="number" placeholder="0" min="0"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Type woning</label>
+            <div class="flex flex-wrap gap-2">
+              <label class="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" name="property_types" value="huis" class="accent-blue-600" /> Huis
+              </label>
+              <label class="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" name="property_types" value="appartement" class="accent-blue-600" /> Appartement
+              </label>
+              <label class="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" name="property_types" value="nieuwbouw" class="accent-blue-600" /> Nieuwbouw
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Check interval (minuten)</label>
+            <select name="check_interval"
+              class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+              <option value="5">Elke 5 minuten</option>
+              <option value="10">Elke 10 minuten</option>
+              <option value="15" selected>Elke 15 minuten</option>
+              <option value="30">Elke 30 minuten</option>
+              <option value="60">Elk uur</option>
+            </select>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <input type="checkbox" name="active" id="active-toggle" class="accent-blue-600 w-4 h-4" />
+            <label for="active-toggle" class="text-sm text-gray-700">Notificaties actief</label>
+          </div>
+
+          <div class="flex gap-3 pt-2">
+            <button type="submit"
+              class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+              Opslaan
+            </button>
+            <button type="button" id="scan-btn"
+              class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg text-sm transition-colors">
+              Nu scannen
+            </button>
+          </div>
+
+          <p id="save-msg" class="text-sm text-green-600 hidden">Opgeslagen!</p>
+        </form>
+      </div>
+
+      <!-- Rechterkolom: tabs -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+
+        <!-- Tab knoppen -->
+        <div class="flex gap-2 mb-4 border-b border-gray-100 pb-3">
+          <button onclick="switchTab('listings')" id="tab-listings"
+            class="tab-btn text-sm font-medium px-3 py-1.5 rounded-lg bg-blue-600 text-white transition-colors">
+            Recente listings
+          </button>
+          <button onclick="switchTab('makelaars')" id="tab-makelaars"
+            class="tab-btn text-sm font-medium px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors">
+            Makelaars <span id="makelaar-count" class="text-xs ml-1 opacity-70"></span>
+          </button>
+        </div>
+
+        <!-- Listings tab -->
+        <div id="panel-listings">
+          <div id="listings-container" class="space-y-3 max-h-[480px] overflow-y-auto pr-1">
+            <p class="text-gray-400 text-sm">Nog geen listings gevonden.</p>
+          </div>
+        </div>
+
+        <!-- Makelaars tab -->
+        <div id="panel-makelaars" class="hidden">
+
+          <!-- Makelaar toevoegen form -->
+          <form id="add-makelaar-form" class="bg-gray-50 rounded-lg p-3 mb-3 space-y-2">
+            <p class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Makelaar toevoegen</p>
+            <input name="name" type="text" placeholder="Naam (bijv. Smeets Makelaardij)" required
+              class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+            <input name="listings_url" type="url" placeholder="URL aanbodspagina (bijv. https://makelaar.nl/koop)" required
+              class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+            <div class="flex gap-2">
+              <select name="parser"
+                class="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                <option value="generic">Automatisch detecteren</option>
+                <option value="realworks">Realworks (~60% NVM)</option>
+                <option value="js">JavaScript-pagina</option>
+              </select>
+              <button type="submit"
+                class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-1.5 rounded-lg text-sm transition-colors">
+                Toevoegen
+              </button>
+            </div>
+            <p id="add-makelaar-msg" class="text-xs hidden"></p>
+          </form>
+
+          <div id="makelaars-container" class="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+            <p class="text-gray-400 text-sm">Voeg je eerste makelaar toe via het formulier hierboven.</p>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    async function loadStatus() {
+      const res = await fetch('/api/status');
+      const data = await res.json();
+
+      const dot = document.getElementById('wa-dot');
+      const statusEl = document.getElementById('wa-status');
+      const qrSection = document.getElementById('qr-section');
+      const qrImage = document.getElementById('qr-image');
+
+      const statusMap = {
+        ready: ['dot-green', 'Verbonden'],
+        qr: ['dot-yellow', 'Scan QR'],
+        connecting: ['dot-yellow', 'Verbinden...'],
+        disconnected: ['dot-red', 'Niet verbonden'],
+      };
+
+      const [dotClass, label] = statusMap[data.whatsapp] || ['dot-red', data.whatsapp];
+      dot.className = `status-dot ${dotClass}`;
+      statusEl.textContent = label;
+
+      if (data.qr) {
+        qrSection.classList.remove('hidden');
+        qrImage.src = data.qr;
+      } else {
+        qrSection.classList.add('hidden');
+      }
+
+      if (data.stats) {
+        document.getElementById('stat-total').textContent = data.stats.total;
+        document.getElementById('stat-notified').textContent = data.stats.notified;
+        document.getElementById('stat-today').textContent = data.stats.today;
+      }
+
+      if (data.lastScan) {
+        document.getElementById('last-scan-row').classList.remove('hidden');
+        document.getElementById('last-scan').textContent = new Date(data.lastScan).toLocaleString('nl-NL');
+      }
+    }
+
+    async function loadPreferences() {
+      const res = await fetch('/api/preferences');
+      const prefs = await res.json();
+      const form = document.getElementById('prefs-form');
+
+      for (const [key, val] of Object.entries(prefs)) {
+        if (key === 'property_types') {
+          document.querySelectorAll('[name="property_types"]').forEach(cb => {
+            cb.checked = val.includes(cb.value);
+          });
+        } else if (key === 'active') {
+          form.querySelector('[name="active"]').checked = !!val;
+        } else {
+          const el = form.querySelector(`[name="${key}"]`);
+          if (el) el.value = val;
+        }
+      }
+    }
+
+    async function loadListings() {
+      const res = await fetch('/api/listings');
+      const listings = await res.json();
+      const container = document.getElementById('listings-container');
+
+      if (listings.length === 0) {
+        container.innerHTML = '<p class="text-gray-400 text-sm">Nog geen listings gevonden.</p>';
+        return;
+      }
+
+      container.innerHTML = listings.map(l => `
+        <a href="${l.url}" target="_blank"
+          class="block border border-gray-100 rounded-lg p-3 hover:bg-gray-50 transition-colors">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-gray-800 truncate">${l.address || l.title || '–'}</p>
+              <p class="text-sm text-blue-600 font-semibold">${l.price ? '€ ' + l.price.toLocaleString('nl-NL') : 'Prijs onbekend'}</p>
+              <p class="text-xs text-gray-400 mt-0.5">
+                ${l.rooms ? l.rooms + ' kamers' : ''}
+                ${l.rooms && l.surface ? ' · ' : ''}
+                ${l.surface ? l.surface + ' m²' : ''}
+                ${(l.rooms || l.surface) && l.agent ? ' · ' : ''}
+                ${l.agent || ''}
+              </p>
+            </div>
+            <div class="flex flex-col items-end gap-1 shrink-0">
+              ${l.notified ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Verstuurd</span>' : '<span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Gezien</span>'}
+              ${l.source ? `<span class="text-xs bg-blue-50 text-blue-400 px-2 py-0.5 rounded-full">${l.source}</span>` : ''}
+              <span class="text-xs text-gray-300">${new Date(l.found_at).toLocaleTimeString('nl-NL', {hour:'2-digit', minute:'2-digit'})}</span>
+            </div>
+          </div>
+        </a>
+      `).join('');
+    }
+
+    document.getElementById('prefs-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const data = Object.fromEntries(new FormData(form));
+      const checkboxes = [...form.querySelectorAll('[name="property_types"]:checked')].map(cb => cb.value);
+      data.property_types = checkboxes;
+      data.active = form.querySelector('[name="active"]').checked;
+
+      await fetch('/api/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+
+      const msg = document.getElementById('save-msg');
+      msg.classList.remove('hidden');
+      setTimeout(() => msg.classList.add('hidden'), 3000);
+    });
+
+    document.getElementById('scan-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('scan-btn');
+      btn.textContent = 'Bezig...';
+      btn.disabled = true;
+      await fetch('/api/scan', { method: 'POST' });
+      setTimeout(() => {
+        btn.textContent = 'Nu scannen';
+        btn.disabled = false;
+        loadListings();
+        loadStatus();
+      }, 5000);
+    });
+
+    // ── Makelaars ──────────────────────────────────────────────────────────
+
+    async function loadMakelaars() {
+      const res = await fetch('/api/makelaars');
+      const makelaars = await res.json();
+      const container = document.getElementById('makelaars-container');
+      const countEl = document.getElementById('makelaar-count');
+      countEl.textContent = makelaars.length ? `(${makelaars.length})` : '';
+
+      if (makelaars.length === 0) {
+        container.innerHTML = '<p class="text-gray-400 text-sm">Voeg je eerste makelaar toe via het formulier hierboven.</p>';
+        return;
+      }
+
+      container.innerHTML = makelaars.map(m => `
+        <div class="flex items-center justify-between border border-gray-100 rounded-lg px-3 py-2 gap-2">
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-gray-800 truncate">${m.name}</p>
+            <p class="text-xs text-gray-400 truncate">${m.listings_url || m.website}</p>
+            <p class="text-xs text-gray-300">${m.parser || 'generic'}${m.last_scraped ? ' · ' + new Date(m.last_scraped).toLocaleTimeString('nl-NL', {hour:'2-digit',minute:'2-digit'}) : ''}</p>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" class="sr-only peer" ${m.active ? 'checked' : ''}
+                onchange="toggleMakelaar(${m.id}, this.checked)">
+              <div class="w-9 h-5 bg-gray-200 peer-checked:bg-blue-600 rounded-full peer
+                peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5
+                after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+            </label>
+            <button onclick="deleteMakelaar(${m.id})" class="text-gray-300 hover:text-red-400 transition-colors text-lg leading-none">×</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function toggleMakelaar(id, active) {
+      await fetch(`/api/makelaars/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active }),
+      });
+    }
+
+    async function deleteMakelaar(id) {
+      await fetch(`/api/makelaars/${id}`, { method: 'DELETE' });
+      loadMakelaars();
+    }
+
+    document.getElementById('add-makelaar-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const data = Object.fromEntries(new FormData(form));
+      const msg = document.getElementById('add-makelaar-msg');
+      const res = await fetch('/api/makelaars', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        msg.textContent = 'Makelaar toegevoegd!';
+        msg.className = 'text-xs text-green-600';
+        form.reset();
+        loadMakelaars();
+      } else {
+        msg.textContent = json.error || 'Fout bij toevoegen';
+        msg.className = 'text-xs text-red-500';
+      }
+      msg.classList.remove('hidden');
+      setTimeout(() => msg.classList.add('hidden'), 3000);
+    });
+
+    function switchTab(name) {
+      document.getElementById('panel-listings').classList.toggle('hidden', name !== 'listings');
+      document.getElementById('panel-makelaars').classList.toggle('hidden', name !== 'makelaars');
+      document.getElementById('tab-listings').className =
+        `tab-btn text-sm font-medium px-3 py-1.5 rounded-lg transition-colors ${name === 'listings' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
+      document.getElementById('tab-makelaars').className =
+        `tab-btn text-sm font-medium px-3 py-1.5 rounded-lg transition-colors ${name === 'makelaars' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
+    }
+
+    // Init
+    loadPreferences();
+    loadListings();
+    loadMakelaars();
+    loadStatus();
+
+    setInterval(loadStatus, 5000);
+    setInterval(loadListings, 30000);
+    setInterval(loadMakelaars, 30000);
+  </script>
+</body>
+</html>

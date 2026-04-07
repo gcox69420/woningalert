@@ -1,7 +1,7 @@
 {
-  "name": "housing-notifier",
+  "name": "woningalert",
   "version": "1.0.0",
-  "description": "Funda woning notifier via WhatsApp",
+  "description": "Ontvang een WhatsApp-bericht zodra een makelaar een nieuwe woning online zet — voordat het op Funda verschijnt.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
